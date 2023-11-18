@@ -1,10 +1,16 @@
 from configparser import ConfigParser
 from mongoengine import connect
 from pathlib import Path
+from redis import StrictRedis
+from redis_lru import RedisLRU
 
 from models import Author, Quote
 
+client = StrictRedis()
+ceche = RedisLRU(client)
 
+
+@ceche
 def parser(query: str) -> list | str:
     command, params = query.strip().split(':')
     if command in ['name', 'tag', 'tags', 'exit']:
@@ -12,11 +18,12 @@ def parser(query: str) -> list | str:
     return 'Невідома команда'
 
 
+@ceche
 def search(params: list) -> list:
     quote = None
     match params[0]:
         case 'name':
-            author = Author.objects(fullname=params[1][0])[0]
+            author = Author.objects(fullname=params[1][0])[0]  # TODO: add or istartswith__in=params[1][0]
             quote = Quote.objects(author=author.id)
             quote = [author.fullname, [quo.quote for quo in quote]]
         case 'tag' | 'tags':
