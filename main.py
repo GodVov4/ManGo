@@ -1,5 +1,5 @@
 from configparser import ConfigParser
-from mongoengine import connect
+from mongoengine import connect, Q
 from pathlib import Path
 from redis import StrictRedis
 from redis_lru import RedisLRU
@@ -14,20 +14,23 @@ ceche = RedisLRU(client)
 def parser(query: str) -> list | str:
     command, params = query.strip().split(':')
     if command in ['name', 'tag', 'tags', 'exit']:
-        return [command, params.strip().split(',')]
+        params = [command, params.strip().split(',')]
+        if all([len(par) >= 2 for par in params[1]]):
+            return params
+        return 'Невідомі параметри'
     return 'Невідома команда'
 
 
 @ceche
 def search(params: list) -> list:
     quote = None
-    match params[0]:
-        case 'name':
-            author = Author.objects(fullname=params[1][0])[0]  # TODO: add or istartswith__in=params[1][0]
+    match params:
+        case ['name', par]:
+            author = Author.objects.filter(Q(fullname=par[0]) | Q(fullname__istartswith__in=par[0]))[0]
             quote = Quote.objects(author=author.id)
             quote = [author.fullname, [quo.quote for quo in quote]]
-        case 'tag' | 'tags':
-            quote = Quote.objects(tags__name__in=params[1])
+        case ['tag' | 'tags', par]:
+            quote = Quote.objects(tags__name__in=par)
             quote = [(quo.author.fullname, quo.quote) for quo in quote]
     return quote
 
@@ -43,8 +46,9 @@ def main():
 
     connect('HW8', host=f'mongodb+srv://{user}:{password}@{domain}/{db}?retryWrites=true&w=majority', ssl=True)
 
-    print('Привіт! Я допоможу з пошуком цитат за ім\'ям автора, тегом або кількома тегами. '
-          'Для пошуку, введи "name: ім\'я автора", "tag: тег" або "tags: тег1,тег2". Для виходу введи "exit".')
+    print('Привіт! Я допоможу з пошуком цитат за ім\'ям автора, тегом або кількома тегами.\n'
+          'Для пошуку, введи "name: ім\'я автора", "tag: тег" або "tags: тег1,тег2". Для виходу введи "exit".\n'
+          'Також можна використовувати скорочені до двох літер імена чи теги.')
     while True:
         query = input('Пошук: ')
         if query == 'exit':
